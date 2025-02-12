@@ -1,6 +1,4 @@
-[![Build Status](https://api.travis-ci.org/kyuridenamida/atcoder-tools.svg?branch=stable)](https://travis-ci.org/kyuridenamida/atcoder-tools)
-[![codecov](https://codecov.io/gh/kyuridenamida/atcoder-tools/branch/master/graph/badge.svg)](https://codecov.io/gh/kyuridenamida/atcoder-tools)
-[![PyPI](https://img.shields.io/pypi/v/atcoder-tools.svg)](https://pypi.python.org/pypi/atcoder-tools)
+NOTE: This is a minimal fork for compatibility with `Jinja2 >= 3.0.0`
 
 【重要】2.13.0以前のバージョンを利用するとルール違反になってしまうケースに関する注意喚起 (2024/6/7)
 ====
