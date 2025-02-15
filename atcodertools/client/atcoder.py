@@ -1,3 +1,4 @@
+# Patched version of atcoder.py in atcodertools to support ATCODER_USERNAME and ATCODER_PASSWORD env vars.
 import getpass
 import os
 import re
@@ -6,15 +7,18 @@ from http.cookiejar import LWPCookieJar
 from typing import List, Optional, Tuple, Union
 
 import requests
-from bs4 import BeautifulSoup
-
 from atcodertools.client.models.contest import Contest
 from atcodertools.client.models.problem import Problem
-from atcodertools.client.models.problem_content import ProblemContent, InputFormatDetectionError, SampleDetectionError
+from atcodertools.client.models.problem_content import (
+    InputFormatDetectionError,
+    ProblemContent,
+    SampleDetectionError,
+)
 from atcodertools.client.models.submission import Submission
 from atcodertools.common.language import Language
 from atcodertools.common.logging import logger
 from atcodertools.fileutils.artifacts_cache import get_cache_file_path
+from bs4 import BeautifulSoup
 
 
 class LoginError(Exception):
@@ -25,7 +29,7 @@ class PageNotFoundError(Exception):
     pass
 
 
-default_cookie_path = get_cache_file_path('cookie.txt')
+default_cookie_path = get_cache_file_path("cookie.txt")
 
 
 def save_cookie(session: requests.Session, cookie_path: Optional[str] = None):
@@ -41,8 +45,7 @@ def load_cookie_to(session: requests.Session, cookie_path: Optional[str] = None)
     session.cookies = LWPCookieJar(cookie_path)
     if os.path.exists(cookie_path):
         session.cookies.load()
-        logger.info(
-            "Loaded session from {}".format(os.path.abspath(cookie_path)))
+        logger.info("Loaded session from {}".format(os.path.abspath(cookie_path)))
         return True
     return False
 
@@ -52,19 +55,25 @@ class Singleton(type):
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            cls._instances[cls] = super(
-                Singleton, cls).__call__(*args, **kwargs)
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
 
 def default_credential_supplier() -> Tuple[str, str]:
-    username = input('AtCoder username: ')
-    password = getpass.getpass('AtCoder password: ')
+    import os
+
+    if os.environ.get("ATCODER_USERNAME"):
+        username = os.environ["ATCODER_USERNAME"]
+    else:
+        username = input("AtCoder username: ")
+    if os.environ.get("ATCODER_PASSWORD"):
+        password = os.environ["ATCODER_PASSWORD"]
+    else:
+        password = getpass.getpass("AtCoder password: ")
     return username, password
 
 
 class AtCoderClient(metaclass=Singleton):
-
     def __init__(self):
         self._session = requests.Session()
 
@@ -73,37 +82,43 @@ class AtCoderClient(metaclass=Singleton):
         resp = self._request(private_url)
         return resp.text.find("Sign In") == -1
 
-    def login(self,
-              credential_supplier=None,
-              use_local_session_cache=True,
-              save_session_cache=True):
-
+    def login(
+        self,
+        credential_supplier=None,
+        use_local_session_cache=True,
+        save_session_cache=True,
+    ):
         if credential_supplier is None:
             credential_supplier = default_credential_supplier
 
         if use_local_session_cache:
             load_cookie_to(self._session)
             if self.check_logging_in():
+                logger.info("Successfully Logged in using the previous session cache.")
                 logger.info(
-                    "Successfully Logged in using the previous session cache.")
-                logger.info(
-                    "If you'd like to invalidate the cache, delete {}.".format(default_cookie_path))
+                    "If you'd like to invalidate the cache, delete {}.".format(
+                        default_cookie_path
+                    )
+                )
 
                 return
 
         username, password = credential_supplier()
 
-        soup = BeautifulSoup(self._session.get(
-            "https://atcoder.jp/login").text, "html.parser")
-        token = soup.find_all("form")[1].find(
-            "input", type="hidden").get("value")
-        resp = self._request("https://atcoder.jp/login", data={
-            'username': username,
-            "password": password,
-            "csrf_token": token
-        }, method='POST')
+        soup = BeautifulSoup(
+            self._session.get("https://atcoder.jp/login").text, "html.parser"
+        )
+        token = soup.find_all("form")[1].find("input", type="hidden").get("value")
+        resp = self._request(
+            "https://atcoder.jp/login",
+            data={"username": username, "password": password, "csrf_token": token},
+            method="POST",
+        )
 
-        if resp.text.find("パスワードを忘れた方はこちら") != -1 or resp.text.find("Forgot your password") != -1:
+        if (
+            resp.text.find("パスワードを忘れた方はこちら") != -1
+            or resp.text.find("Forgot your password") != -1
+        ):
             raise LoginError
 
         if use_local_session_cache and save_session_cache:
@@ -115,7 +130,7 @@ class AtCoderClient(metaclass=Singleton):
         if resp.status_code == 404:
             raise PageNotFoundError
         res = []
-        for tag in soup.find('table').select('tr')[1::]:
+        for tag in soup.find("table").select("tr")[1::]:
             tag = tag.find("a")
             alphabet = tag.text
             problem_id = tag.get("href").split("/")[-1]
@@ -136,11 +151,11 @@ class AtCoderClient(metaclass=Singleton):
         page_num = 1
         while True:
             resp = self._request(
-                "https://atcoder.jp/contests/archive?page={}&lang=ja".format(page_num))
+                "https://atcoder.jp/contests/archive?page={}&lang=ja".format(page_num)
+            )
             soup = BeautifulSoup(resp.text, "html.parser")
             text = str(soup)
-            url_re = re.compile(
-                r'"/contests/([A-Za-z0-9\'~+\-_]+)"')
+            url_re = re.compile(r'"/contests/([A-Za-z0-9\'~+\-_]+)"')
             contest_list = url_re.findall(text)
             contest_list = set(contest_list)
             contest_list.remove("archive")
@@ -155,12 +170,19 @@ class AtCoderClient(metaclass=Singleton):
         contest_ids = sorted(contest_ids)
         return [Contest(contest_id) for contest_id in contest_ids]
 
-    def submit_source_code(self, contest: Contest, problem: Problem, lang: Union[str, Language], source: str) -> Submission:
+    def submit_source_code(
+        self,
+        contest: Contest,
+        problem: Problem,
+        lang: Union[str, Language],
+        source: str,
+    ) -> Submission:
         if isinstance(lang, str):
             warnings.warn(
                 "Parameter lang as a str object is deprecated. "
                 "Please use 'atcodertools.common.language.Language' object instead",
-                UserWarning)
+                UserWarning,
+            )
             lang_option_pattern = lang
         else:
             lang_option_pattern = lang.submission_lang_pattern
@@ -169,24 +191,21 @@ class AtCoderClient(metaclass=Singleton):
 
         soup = BeautifulSoup(resp.text, "html.parser")
         session_id = soup.find("input", attrs={"type": "hidden"}).get("value")
-        task_select_area = soup.find(
-            'select', attrs={"id": "select-task"})
+        task_select_area = soup.find("select", attrs={"id": "select-task"})
         task_number = task_select_area.find(
-            "option", text=re.compile('{} -'.format(problem.get_alphabet()))).get("value")
-        language_select_area = soup.find(
-            'select', attrs={"data-placeholder": "-"})
+            "option", text=re.compile("{} -".format(problem.get_alphabet()))
+        ).get("value")
+        language_select_area = soup.find("select", attrs={"data-placeholder": "-"})
         language_number = language_select_area.find(
-            "option", text=lang_option_pattern).get("value")
+            "option", text=lang_option_pattern
+        ).get("value")
         postdata = {
             "csrf_token": session_id,
             "data.TaskScreenName": task_number,
             "data.LanguageId": language_number,
-            "sourceCode": source
+            "sourceCode": source,
         }
-        resp = self._request(
-            contest.get_submit_url(),
-            data=postdata,
-            method='POST')
+        resp = self._request(contest.get_submit_url(), data=postdata, method="POST")
 
         return Submission.make_submissions_from(resp.text)[0]
 
@@ -202,10 +221,10 @@ class AtCoderClient(metaclass=Singleton):
             page_num += 1
         return submissions
 
-    def _request(self, url: str, method='GET', **kwargs):
-        if method == 'GET':
+    def _request(self, url: str, method="GET", **kwargs):
+        if method == "GET":
             response = self._session.get(url, **kwargs)
-        elif method == 'POST':
+        elif method == "POST":
             response = self._session.post(url, **kwargs)
         else:
             raise NotImplementedError
