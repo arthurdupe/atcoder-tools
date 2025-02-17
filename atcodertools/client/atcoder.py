@@ -88,6 +88,11 @@ class AtCoderClient(metaclass=Singleton):
         use_local_session_cache=True,
         save_session_cache=True,
     ):
+        # Check if we should always delete the cache
+        if str(os.environ.get("ALWAYS_DELETE_ATCODER_CACHE_BEFORE_LOGIN", None)) == "1" and os.path.exists(default_cookie_path):
+            os.remove(default_cookie_path)
+            logger.info(f"Deleted session cache at {default_cookie_path} due to ALWAYS_DELETE_ATCODER_CACHE_BEFORE_LOGIN=1")
+
         if credential_supplier is None:
             credential_supplier = default_credential_supplier
 
